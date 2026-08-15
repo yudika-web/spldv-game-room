@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SPLDV MISSION LAB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Space Mono', 'monospace'],
+                    },
+                    colors: {
+                        lab: {
+                            bg: '#0f172a',      // slate-900
+                            card: '#1e293b',    // slate-800
+                            primary: '#3b82f6', // blue-500 (Graph)
+                            success: '#22c55e', // green-500 (Substitusi)
+                            warning: '#f97316', // orange-500 (Eliminasi)
+                            master: '#a855f7',  // purple-500
+                            text: '#f8fafc',    // slate-50
+                            bot: '#0ea5e9',     // sky-500
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'bounce-slight': 'bounceSlight 2s infinite',
+                        'glow': 'glow 1.5s ease-in-out infinite alternate',
+                    },
+                    keyframes: {
+                        bounceSlight: {
+                            '0%, 100%': { transform: 'translateY(-5%)' },
+                            '50%': { transform: 'translateY(0)' },
+                        },
+                        glow: {
+                            'from': { boxShadow: '0 0 10px #3b82f6, 0 0 20px #3b82f6' },
+                            'to': { boxShadow: '0 0 20px #60a5fa, 0 0 30px #60a5fa' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow-x: hidden;
+            user-select: none; /* Mencegah seleksi teks saat tap di HP */
+            -webkit-user-select: none;
+        }
+        
+        .view-section {
+            display: none;
+            min-height: 100vh;
+            width: 100%;
+        }
+        
+        .view-section.active {
+            display: flex;
+        }
+
+        /* Canvas Styling */
+        #graphCanvas {
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+            cursor: crosshair;
+            touch-action: none; /* Penting untuk touch events di kanvas */
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1 / 1;
+        }
+
+        #graphCanvas:hover {
+            /* Efek visual tambahan saat hover jika diperlukan */
+            box-shadow: inset 0 0 15px rgba(168, 85, 247, 0.3); /* Menambahkan glow ungu tipis di border dalam */
+        }
+
+        .math-text {
+            font-family: 'Space Mono', monospace;
+            letter-spacing: 0.05em;
+        }
+
+        .step-panel {
+            transition: all 0.3s ease;
+        }
+
+        .hidden-step {
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: none;
+            position: absolute;
+        }
+
+        .active-step {
+            opacity: 1;
+            transform: translateY(0);
+            position: relative;
+        }
+
+        /* Algobot Bubble */
+        .bot-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 20px;
+            border-width: 10px 10px 0;
+            border-style: solid;
+            border-color: #0ea5e9 transparent transparent transparent;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="antialiased selection:bg-lab-primary selection:text-white">
+
+    <!-- AUDIO ELEMENTS -->
+    <audio id="snd-click" src="https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3"></audio>
+    <audio id="snd-success" src="https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3"></audio>
+    <audio id="snd-error" src="https://assets.mixkit.co/sfx/preview/mixkit-click-error-1110.mp3"></audio>
+    <audio id="snd-unlock" src="https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-2015.mp3"></audio>
+
+    <!-- UI: HEADER / NAVBAR -->
+    <nav class="fixed top-0 w-full bg-lab-card/90 backdrop-blur-sm border-b border-slate-700 z-50 px-4 py-3 flex justify-between items-center shadow-lg">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl">🧪</span>
+            <span class="font-bold tracking-wider text-sm md:text-base">SPLDV MISSION LAB</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-right">
+                <div class="text-xs text-slate-400 font-semibold">SKOR</div>
+                <div class="text-xl font-mono text-yellow-400 font-bold" id="ui-score">0</div>
+            </div>
+            <button id="btn-audio" class="p-2 bg-slate-700 rounded-full hover:bg-slate-600 transition" onclick="toggleAudio()">
+                🔊
+            </button>
+        </div>
+    </nav>
+
+    <!-- UI: ALGOBOT GUIDE (Fixed on bottom right) -->
+    <div id="algobot-container" class="fixed bottom-4 right-4 z-40 hidden flex-col items-end pointer-events-none w-64 md:w-80">
+        <div id="algobot-message" class="bot-bubble bg-lab-bot text-white p-3 rounded-lg rounded-bl-none shadow-lg mb-2 text-sm md:text-base font-medium relative animate-bounce-slight pointer-events-auto">
+            Halo! Aku Algobot. Aku akan memandumu.
+        </div>
+        <div class="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-2xl border-2 border-lab-bot shadow-lg pointer-events-auto cursor-pointer" onclick="repeatHint()">
+            🤖
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- VIEWS CONTAINER -->
+    <!-- ========================================== -->
+    <main class="pt-16 pb-20 w-full min-h-screen">
+
+        <!-- 1. COVER VIEW -->
+        <section id="view-cover" class="view-section active flex-col items-center justify-center p-4">
+            <div class="text-center max-w-lg mx-auto bg-lab-card p-8 rounded-2xl shadow-2xl border border-slate-700">
+                <div class="text-6xl mb-4 animate-pulse-slow">🧩</div>
+                <h1 class="text-3xl md:text-5xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-lab-primary via-lab-master to-lab-success">
+                    SPLDV MISSION LAB
+                </h1>
+                <h2 class="text-xl md:text-2xl text-slate-300 font-semibold mb-6">"Temukan Titik Rahasia!"</h2>
+                <p class="text-slate-400 mb-8 text-sm md:text-base leading-relaxed">
+                    Masuki laboratorium matematika futuristik. Pecahkan tiga misi rahasia menggunakan metode 
+                    <span class="text-lab-primary font-bold">Grafik</span>, 
+                    <span class="text-lab-success font-bold">Substitusi</span>, dan 
+                    <span class="text-lab-warning font-bold">Eliminasi</span>.
+                </p>
+                <button onclick="navTo('intro')" class="w-full py-4 bg-lab-primary hover:bg-blue-600 rounded-xl font-bold text-lg transition shadow-[0_0_15px_rgba(59,130,246,0.5)] transform hover:scale-105 active:scale-95">
+                    MULAI MISI 🚀
+                </button>
+            </div>
+        </section>
+
+        <!-- 2. INTRO / CERITA VIEW -->
+        <section id="view-intro" class="view-section flex-col items-center justify-center p-4">
+            <div class="max-w-2xl mx-auto bg-lab-card p-6 md:p-8 rounded-2xl shadow-2xl border border-slate-700 w-full">
+                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2 text-lab-bot">
+                    <span>🤖</span> Pesan dari Algobot
+                </h2>
+                <div class="space-y-4 text-slate-300 bg-slate-900 p-4 rounded-xl text-sm md:text-base">
+                    <p>"Selamat datang di SPLDV Mission Lab, Penjelajah!"</p>
+                    <p>"Di sini terdapat tiga laboratorium utama. Masing-masing menyimpan potongan kode untuk membuka <strong>MASTER LAB</strong>."</p>
+                    <p>"Tugasmu adalah memecahkan Sistem Persamaan Linear Dua Variabel (SPLDV). Jangan hanya menebak! Kita akan mencari solusinya langkah demi langkah."</p>
+                    <ul class="list-none space-y-2 mt-4 text-sm">
+                        <li class="flex items-center gap-2"><span class="text-green-400">✓</span> Jawaban benar +10 Poin.</li>
+                        <li class="flex items-center gap-2"><span class="text-blue-400">✓</span> Salah tidak mengurangi poin, kamu bisa mencoba lagi.</li>
+                        <li class="flex items-center gap-2"><span class="text-yellow-400">✓</span> Gunakan petunjuk jika kesulitan.</li>
+                    </ul>
+                </div>
+                <button onclick="initGame()" class="mt-6 w-full py-3 bg-lab-master hover:bg-purple-600 rounded-xl font-bold transition">
+                    MENGERTI, BUKA DASHBOARD
+                </button>
+            </div>
+        </section>
+
+        <!-- 3. DASHBOARD VIEW -->
+        <section id="view-dash" class="view-section flex-col items-center p-4 md:p-8">
+            <div class="w-full max-w-4xl">
+                <h2 class="text-3xl font-bold mb-2 text-center">Fasilitas Laboratorium</h2>
+                <p class="text-slate-400 text-center mb-8">Selesaikan lab secara berurutan untuk membuka akses selanjutnya.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Graph Lab Card -->
+                    <div id="card-graph" class="bg-lab-card p-6 rounded-2xl border-2 border-lab-primary shadow-[0_0_15px_rgba(59,130,246,0.3)] transition transform hover:-translate-y-1">
+                        <div class="text-4xl mb-4">📈</div>
+                        <h3 class="text-xl font-bold text-lab-primary mb-2">GRAPH LAB</h3>
+                        <p class="text-sm text-slate-400 mb-6 h-10">Menemukan solusi dengan menggambar garis.</p>
+                        <button onclick="startLab('graph')" class="w-full py-2 bg-lab-primary hover:bg-blue-600 rounded-lg font-bold transition">
+                            MASUK
+                        </button>
+                    </div>
+
+                    <!-- Substitution Lab Card -->
+                    <div id="card-sub" class="bg-slate-800 p-6 rounded-2xl border-2 border-slate-700 opacity-75 relative">
+                        <div id="lock-sub" class="absolute inset-0 bg-slate-900/80 rounded-2xl flex flex-col items-center justify-center z-10 backdrop-blur-sm">
+                            <span class="text-4xl mb-2">🔒</span>
+                            <span class="text-sm font-bold text-slate-400">TERKUNCI</span>
+                        </div>
+                        <div class="text-4xl mb-4">🔄</div>
+                        <h3 class="text-xl font-bold text-lab-success mb-2">SUBSTITUTION LAB</h3>
+                        <p class="text-sm text-slate-400 mb-6 h-10">Menemukan solusi dengan mengganti nilai.</p>
+                        <button id="btn-sub" onclick="startLab('sub')" class="w-full py-2 bg-lab-success hover:bg-green-600 rounded-lg font-bold transition opacity-0 pointer-events-none">
+                            MASUK
+                        </button>
+                    </div>
+
+                    <!-- Elimination Lab Card -->
+                    <div id="card-elim" class="bg-slate-800 p-6 rounded-2xl border-2 border-slate-700 opacity-75 relative">
+                        <div id="lock-elim" class="absolute inset-0 bg-slate-900/80 rounded-2xl flex flex-col items-center justify-center z-10 backdrop-blur-sm">
+                            <span class="text-4xl mb-2">🔒</span>
+                            <span class="text-sm font-bold text-slate-400">TERKUNCI</span>
+                        </div>
+                        <div class="text-4xl mb-4">➕</div>
+                        <h3 class="text-xl font-bold text-lab-warning mb-2">ELIMINATION LAB</h3>
+                        <p class="text-sm text-slate-400 mb-6 h-10">Menemukan solusi dengan menghilangkan variabel.</p>
+                        <button id="btn-elim" onclick="startLab('elim')" class="w-full py-2 bg-lab-warning hover:bg-orange-600 rounded-lg font-bold transition opacity-0 pointer-events-none">
+                            MASUK
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Master Lab -->
+                <div id="card-master" class="mt-8 bg-slate-800 p-6 rounded-2xl border-2 border-slate-700 opacity-75 relative max-w-md mx-auto text-center">
+                     <div id="lock-master" class="absolute inset-0 bg-slate-900/90 rounded-2xl flex flex-col items-center justify-center z-10 backdrop-blur-sm">
+                        <span class="text-5xl mb-2 text-yellow-500">👑</span>
+                        <span class="text-sm font-bold text-slate-400 tracking-widest">AKSES TERKUNCI</span>
+                    </div>
+                    <div class="text-5xl mb-4">👑</div>
+                    <h3 class="text-2xl font-bold text-lab-master mb-2">MASTER LAB</h3>
+                    <p class="text-sm text-slate-400 mb-4">Ujian akhir memadukan semua metode.</p>
+                    <button id="btn-master" onclick="startLab('master')" class="w-full py-3 bg-lab-master hover:bg-purple-600 rounded-xl font-bold transition opacity-0 pointer-events-none text-lg">
+                        BUKA MASTER LAB
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. GRAPH LAB VIEW (THE CORE MECHANIC) -->
+        <section id="view-graph" class="view-section p-2 md:p-6">
+            <div class="w-full max-w-6xl mx-auto flex flex-col lg:flex-row gap-6">
+                
+                <!-- KIRI: Panel Kontrol & Instruksi (Langkah-langkah) -->
+                <div class="w-full lg:w-1/2 flex flex-col gap-4 order-2 lg:order-1">
+                    
+                    <div class="bg-lab-card p-4 rounded-xl border border-lab-primary shadow-md flex justify-between items-center">
+                        <div>
+                            <span class="text-xs text-slate-400 font-bold tracking-wider">MISI AKTIF</span>
+                            <h2 class="text-xl font-bold text-lab-primary">📈 GRAPH LAB</h2>
+                        </div>
+                        <button onclick="navTo('dash')" class="text-sm bg-slate-700 px-3 py-1 rounded hover:bg-slate-600">Kembali</button>
+                    </div>
+
+                    <!-- Area Soal Utama -->
+                    <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                        <h3 class="text-sm text-slate-400 mb-2">Sistem Persamaan:</h3>
+                        <div class="flex flex-col gap-2 math-text text-xl">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+                                <span id="g-eq1-text">x + y = 6</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                                <span id="g-eq2-text">x - y = 2</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel Langkah Dinamis -->
+                    <div id="g-step-container" class="bg-slate-800 p-5 rounded-xl border border-slate-700 flex-grow relative overflow-hidden">
+                        <!-- Konten langkah diinjeksi via JS -->
+                    </div>
+
+                </div>
+
+                <!-- KANAN: Kanvas Grafik -->
+                <div class="w-full lg:w-1/2 flex flex-col items-center order-1 lg:order-2">
+                    <div class="bg-white p-2 rounded-xl shadow-lg w-full max-w-[420px] mx-auto relative">
+                        <!-- Canvas untuk menggambar koordinat Cartesian -->
+                        <canvas id="graphCanvas" width="400" height="400"></canvas>
+                        
+                        <!-- Tooltip Koordinat -->
+                        <div id="canvas-tooltip" class="absolute bg-slate-800 text-white text-xs px-2 py-1 rounded pointer-events-none hidden font-mono z-10 transform -translate-x-1/2 -translate-y-full mt-[-10px]">
+                            (0, 0)
+                        </div>
+                    </div>
+                    
+                    <!-- Tabel Titik (Muncul bertahap) -->
+                    <div class="w-full max-w-[420px] mx-auto mt-4 grid grid-cols-2 gap-4">
+                        <div class="bg-slate-800 p-3 rounded-lg border-t-4 border-blue-500">
+                            <div class="text-xs text-center text-slate-400 mb-1">Titik Biru</div>
+                            <div id="g-table-1" class="text-center font-mono text-sm text-blue-300 min-h-[40px]">
+                                <!-- (x,y) -->
+                            </div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded-lg border-t-4 border-green-500">
+                            <div class="text-xs text-center text-slate-400 mb-1">Titik Hijau</div>
+                            <div id="g-table-2" class="text-center font-mono text-sm text-green-300 min-h-[40px]">
+                                <!-- (x,y) -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. SUBSTITUTION LAB VIEW -->
+        <section id="view-sub" class="view-section flex-col items-center p-4 md:p-8">
+            <div class="w-full max-w-3xl flex flex-col gap-4">
+                <div class="bg-lab-card p-4 rounded-xl border border-lab-success shadow-md flex justify-between items-center">
+                    <div>
+                        <span class="text-xs text-slate-400 font-bold tracking-wider">MISI AKTIF</span>
+                        <h2 class="text-xl font-bold text-lab-success">🔄 SUBSTITUTION LAB</h2>
+                    </div>
+                    <button onclick="navTo('dash')" class="text-sm bg-slate-700 px-3 py-1 rounded hover:bg-slate-600">Kembali</button>
+                </div>
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                     <div class="flex flex-col gap-2 math-text text-xl text-center">
+                        <div id="s-eq1-text" class="text-blue-300">y = x + 2</div>
+                        <div id="s-eq2-text" class="text-green-300">x + y = 8</div>
+                    </div>
+                </div>
+
+                <div id="s-step-container" class="bg-slate-800 p-5 rounded-xl border border-slate-700 min-h-[300px]">
+                    <!-- Konten diinjeksi via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. ELIMINATION LAB VIEW -->
+        <section id="view-elim" class="view-section flex-col items-center p-4 md:p-8">
+            <div class="w-full max-w-3xl flex flex-col gap-4">
+                <div class="bg-lab-card p-4 rounded-xl border border-lab-warning shadow-md flex justify-between items-center">
+                    <div>
+                        <span class="text-xs text-slate-400 font-bold tracking-wider">MISI AKTIF</span>
+                        <h2 class="text-xl font-bold text-lab-warning">➕ ELIMINATION LAB</h2>
+                    </div>
+                    <button onclick="navTo('dash')" class="text-sm bg-slate-700 px-3 py-1 rounded hover:bg-slate-600">Kembali</button>
+                </div>
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                     <div class="flex flex-col gap-2 math-text text-xl text-center">
+                        <div id="e-eq1-text" class="text-blue-300">2x + y = 11</div>
+                        <div id="e-eq2-text" class="text-green-300">x - y = 1</div>
+                    </div>
+                </div>
+
+                <div id="e-step-container" class="bg-slate-800 p-5 rounded-xl border border-slate-700 min-h-[300px]">
+                    <!-- Konten diinjeksi via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. REWARD / END VIEW -->
+        <section id="view-reward" class="view-section flex-col items-center justify-center p-4">
+             <div class="text-center max-w-lg mx-auto bg-lab-card p-8 rounded-2xl shadow-2xl border border-slate-700 w-full relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-b from-yellow-500/20 to-transparent pointer-events-none"></div>
+                <h1 class="text-4xl font-black mb-2 text-yellow-400 relative z-10">MISI SELESAI!</h1>
+                <p class="text-slate-300 mb-6 relative z-10">Kamu telah menguasai tiga metode SPLDV.</p>
+                
+                <div class="bg-slate-900 p-6 rounded-xl mb-6 relative z-10 border border-slate-700">
+                    <div class="text-sm text-slate-400 mb-1">TOTAL SKOR</div>
+                    <div class="text-5xl font-mono font-bold text-white mb-4" id="final-score">0</div>
+                    <div class="text-sm text-slate-400 mb-2">GELAR PENELITI:</div>
+                    <div id="final-badge" class="text-2xl font-bold text-lab-primary inline-block px-4 py-2 bg-slate-800 rounded-full border border-lab-primary">
+                        ⭐ SPLDV Solver
+                    </div>
+                </div>
+
+                <button onclick="location.reload()" class="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition relative z-10">
+                    KEMBALI KE MENU UTAMA
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // ==========================================
+        // AUDIO SYSTEM
+        // ==========================================
+        let audioEnabled = true;
+        const sounds = {
+            click: document.getElementById('snd-click'),
+            success: document.getElementById('snd-success'),
+            error: document.getElementById('snd-error'),
+            unlock: document.getElementById('snd-unlock')
+        };
+
+        function playSound(type) {
+            if (!audioEnabled || !sounds[type]) return;
+            sounds[type].currentTime = 0;
+            sounds[type].play().catch(e => console.log("Audio play prevented by browser"));
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            document.getElementById('btn-audio').innerText = audioEnabled ? '🔊' : '🔇';
+        }
+
+        // ==========================================
+        // DATA: BANK SOAL (15 Soal per Lab, dihasilkan via fungsi untuk efisiensi)
+        // ==========================================
+        
+        // Membangun 15 soal grafik yang memotong tepat di koordinat bulat (-8 sampai 8)
+        function generateGraphQuestions() {
+            const qs = [];
+
+            // Helper: Dapatkan minimal 6 pilihan X yang menghasilkan Y bulat
+            const getValidXChoices = (a, b, c) => {
+                let valid = [];
+                for (let x = -8; x <= 8; x++) {
+                    let y = (c - a * x) / b;
+                    if (Number.isInteger(y) && y >= -9 && y <= 9) {
+                        valid.push(x);
+                    }
+                }
+                // Acak urutan agar pilihan bervariasi
+                valid.sort(() => 0.5 - Math.random());
+                // Jika kandidat valid kurang dari 6, tambahkan angka fallback acak
+                while (valid.length < 6) {
+                    let randX = Math.floor(Math.random() * 10) - 5;
+                    if (!valid.includes(randX)) valid.push(randX);
+                }
+                return valid;
+            };
+
+            // Soal 1 (Hardcoded untuk tutorial)
+            qs.push({
+                eq1: { a: 1, b: 1, c: 6, text: "x + y = 6", color: 'blue' },
+                eq2: { a: 1, b: -1, c: 2, text: "x - y = 2", color: 'green' },
+                sol: { x: 4, y: 2 },
+                xChoices1: [0, 2, 3, 1, 5, 6], // Array pilihan x
+                xChoices2: [0, 1, 3, 5, -1, 6] 
+            });
+            // Generate 14 soal lainnya
+            const presets = [
+                {x: 2, y: 3, a1: 2, b1: 1, a2: -1, b2: 1}, // 2x+y=7, -x+y=1 -> x=2, y=3
+                {x: 3, y: 1, a1: 1, b1: 2, a2: 1, b2: -1}, // x+2y=5, x-y=2 -> x=3, y=1
+                {x: -1, y: 4, a1: 3, b1: 1, a2: 1, b2: 1}, // 3x+y=1, x+y=3 -> x=-1, y=4
+                {x: -2, y: -2, a1: 1, b1: -1, a2: 2, b2: 1}, // x-y=0, 2x+y=-6 -> x=-2, y=-2
+                {x: 4, y: -1, a1: 1, b1: 3, a2: 1, b2: 1}, // x+3y=1, x+y=3
+                {x: 1, y: 5, a1: 2, b1: -1, a2: 1, b2: 1},
+                {x: -3, y: 2, a1: 1, b1: 2, a2: -1, b2: 1},
+                {x: 5, y: 0, a1: 1, b1: 1, a2: 2, b2: -1},
+                {x: 0, y: 4, a1: 3, b1: 1, a2: 1, b2: -1},
+                {x: 2, y: -3, a1: 1, b1: 1, a2: 2, b2: 1},
+                {x: -4, y: -1, a1: -1, b1: 2, a2: 1, b2: -3},
+                {x: 3, y: 3, a1: 2, b1: -1, a2: 1, b2: 1},
+                {x: -2, y: 5, a1: 1, b1: 1, a2: 3, b2: 2},
+                {x: 1, y: -4, a1: 4, b1: 1, a2: 2, b2: -1}
+            ];
+
+            presets.forEach(p => {
+                let c1 = p.a1 * p.x + p.b1 * p.y;
+                let c2 = p.a2 * p.x + p.b2 * p.y;
+                
+                // Format teks persamaan cerdas
+                const fmt = (a, b, c) => {
+                    let text = "";
+                    if(a === 1) text += "x "; else if(a === -1) text += "-x "; else if(a !== 0) text += a + "x ";
+                    if(b === 1) text += (a!==0?"+ ":"") + "y"; else if(b === -1) text += "- y"; else if(b > 0) text += (a!==0?"+ ":"") + b + "y"; else if(b < 0) text += "- " + Math.abs(b) + "y";
+                    text += " = " + c;
+                    return text;
+                };
+
+                qs.push({
+                    eq1: { a: p.a1, b: p.b1, c: c1, text: fmt(p.a1, p.b1, c1), color: 'blue' },
+                    eq2: { a: p.a2, b: p.b2, c: c2, text: fmt(p.a2, p.b2, c2), color: 'green' },
+                    sol: { x: p.x, y: p.y },
+                    xChoices1: getValidXChoices(p.a1, p.b1, c1),
+                    xChoices2: getValidXChoices(p.a2, p.b2, c2)
+                });
+            });
+            return qs;
+        }
+
+        const graphQuestions = generateGraphQuestions();
+        
+        // Data sederhana untuk demo Substitusi & Eliminasi (Di-loop untuk mencapai 15 soal)
+        const subQuestions = [
+            { eq1: "y = x + 2", eq2: "x + y = 8", subType: 'y', subExpr: "x + 2", xVal: 3, yVal: 5, ansX: 3, ansY: 5 },
+            { eq1: "x = 2y", eq2: "x + y = 9", subType: 'x', subExpr: "2y", xVal: 6, yVal: 3, ansX: 6, ansY: 3 },
+            { eq1: "y = 2x - 1", eq2: "3x + y = 14", subType: 'y', subExpr: "2x - 1", xVal: 3, yVal: 5, ansX: 3, ansY: 5 },
+            { eq1: "x = y + 4", eq2: "2x - y = 10", subType: 'x', subExpr: "y + 4", xVal: 6, yVal: 2, ansX: 6, ansY: 2 },
+            { eq1: "y = 3 - x", eq2: "2x + 3y = 7", subType: 'y', subExpr: "3 - x", xVal: 2, yVal: 1, ansX: 2, ansY: 1 }
+        ];
+
+        const elimQuestions = [
+            { eq1: "2x + y = 11", eq2: "x - y = 1", elimVar: 'y', op: '+', resEq: "3x = 12", xVal: 4, yVal: 3 },
+            { eq1: "3x + 2y = 12", eq2: "3x - y = 3", elimVar: 'x', op: '-', resEq: "3y = 9", xVal: 2, yVal: 3 },
+            { eq1: "x + 2y = 8", eq2: "x + y = 5", elimVar: 'x', op: '-', resEq: "y = 3", xVal: 2, yVal: 3 },
+            { eq1: "4x + y = 9", eq2: "2x - y = 3", elimVar: 'y', op: '+', resEq: "6x = 12", xVal: 2, yVal: 1 },
+            { eq1: "5x + 3y = 19", eq2: "2x + 3y = 13", elimVar: '3y', op: '-', resEq: "3x = 6", xVal: 2, yVal: 3 }
+        ];
+
+        // ==========================================
+        // GAME STATE
+        // ==========================================
+        let state = {
+            score: 0,
+            labsCompleted: { graph: false, sub: false, elim: false, master: false },
+            currentLab: null,
+            qIndex: 0,
+            labStep: 0,
+            graphData: {
+                points1: [], points2: [], currentEq: 1, targetX: null, targetY: null
+            }
+        };
+
+        function navTo(viewId) {
+            playSound('click');
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            updateDashboard();
+        }
+
+        function initGame() {
+            state.score = 0;
+            state.labsCompleted = { graph: false, sub: false, elim: false, master: false };
+            updateScoreUI();
+            navTo('dash');
+            showBotMessage("Pilih GRAPH LAB untuk memulai misi pertamamu!", "Mulai dari metode grafik.");
+        }
+
+        function updateScoreUI() {
+            document.getElementById('ui-score').innerText = state.score;
+        }
+
+        function addScore() {
+            state.score += 10;
+            updateScoreUI();
+            playSound('success');
+        }
+
+        function updateDashboard() {
+            if (state.labsCompleted.graph) {
+                document.getElementById('card-sub').classList.remove('opacity-75');
+                document.getElementById('lock-sub').classList.add('hidden');
+                document.getElementById('btn-sub').classList.remove('opacity-0', 'pointer-events-none');
+                document.getElementById('card-graph').classList.add('border-green-500');
+            }
+            if (state.labsCompleted.sub) {
+                document.getElementById('card-elim').classList.remove('opacity-75');
+                document.getElementById('lock-elim').classList.add('hidden');
+                document.getElementById('btn-elim').classList.remove('opacity-0', 'pointer-events-none');
+                document.getElementById('card-sub').classList.add('border-green-500');
+            }
+            if (state.labsCompleted.graph && state.labsCompleted.sub && state.labsCompleted.elim) {
+                document.getElementById('card-master').classList.remove('opacity-75');
+                document.getElementById('lock-master').classList.add('hidden');
+                document.getElementById('btn-master').classList.remove('opacity-0', 'pointer-events-none');
+                document.getElementById('card-master').classList.add('animate-glow', 'border-lab-master');
+                document.getElementById('card-elim').classList.add('border-green-500');
+            }
+        }
+
+        function startLab(labName) {
+            state.currentLab = labName;
+            state.qIndex = Math.floor(Math.random() * 5); // Ambil soal acak dari 5 pertama
+            state.labStep = 0;
+            
+            navTo(labName);
+
+            if (labName === 'graph') initGraphLab();
+            else if (labName === 'sub') initSubLab();
+            else if (labName === 'elim') initElimLab();
+            else if (labName === 'master') {
+                // Dummy Master Lab untuk MVP
+                alert("Master Lab Terbuka! Di versi penuh, ini akan mencampur semua soal.");
+                navTo('reward');
+            }
+        }
+
+        // ==========================================
+        // ALGOBOT SYSTEM
+        // ==========================================
+        let currentHintStr = "";
+        function showBotMessage(msg, hint = "") {
+            const container = document.getElementById('algobot-container');
+            const bubble = document.getElementById('algobot-message');
+            bubble.innerHTML = msg;
+            currentHintStr = hint;
+            container.classList.remove('hidden');
+            container.classList.add('flex');
+            
+            // Auto hide after 6 seconds unless it's an interactive step
+            clearTimeout(window.botTimer);
+            window.botTimer = setTimeout(() => {
+                // container.classList.add('hidden');
+            }, 6000);
+        }
+
+        function repeatHint() {
+            playSound('click');
+            if(currentHintStr) {
+                const bubble = document.getElementById('algobot-message');
+                bubble.innerHTML = `💡 Hint: <br> ${currentHintStr}`;
+            }
+        }
+
+        // ==========================================
+        // GRAPH LAB CORE LOGIC & CANVAS ENGINE
+        // ==========================================
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+        const MATH_MIN = -10;
+        const MATH_MAX = 10;
+        let isPlottingMode = false;
+        let isCanvasHovered = false; // Menyimpan status hover pada canvas
+        let mousePos = { mathX: null, mathY: null }; // Melacak posisi presisi kursor
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            // Force square aspect ratio
+            canvas.width = rect.width;
+            canvas.height = rect.width;
+            drawGrid();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // Transformasi Koordinat Matematika ke Piksel Layar
+        function mathToPixel(mathX, mathY) {
+            const w = canvas.width;
+            const h = canvas.height;
+            const px = ((mathX - MATH_MIN) / (MATH_MAX - MATH_MIN)) * w;
+            const py = h - ((mathY - MATH_MIN) / (MATH_MAX - MATH_MIN)) * h;
+            return { px, py };
+        }
+
+        // Piksel Layar ke Matematika
+        function pixelToMath(px, py) {
+            const w = canvas.width;
+            const h = canvas.height;
+            const mathX = MATH_MIN + (px / w) * (MATH_MAX - MATH_MIN);
+            const mathY = MATH_MIN + ((h - py) / h) * (MATH_MAX - MATH_MIN);
+            return { mathX, mathY };
+        }
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const w = canvas.width;
+            const h = canvas.height;
+            
+            // Ubah warna grid dan sumbu jika di-hover dan dalam mode plotting menjadi UNGU
+            const gridColor = (isPlottingMode && isCanvasHovered) ? '#d8b4fe' : '#e2e8f0'; // purple-300 or slate-200
+            const textColor = (isPlottingMode && isCanvasHovered) ? '#9333ea' : '#94a3b8'; // purple-600 or slate-400
+            const axisColor = (isPlottingMode && isCanvasHovered) ? '#a855f7' : '#475569'; // purple-500 or slate-600
+
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 1;
+            ctx.font = "10px monospace";
+            ctx.fillStyle = textColor;
+
+            // Grid Lines & Numbers
+            for (let i = MATH_MIN; i <= MATH_MAX; i++) {
+                const { px, py } = mathToPixel(i, i);
+                
+                // Vertical lines (X)
+                ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+                if(i !== 0 && i % 2 === 0) ctx.fillText(i, px + 2, h/2 + 12);
+                
+                // Horizontal lines (Y)
+                ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
+                if(i !== 0 && i % 2 === 0) ctx.fillText(i, w/2 + 2, py - 2);
+            }
+
+            // Axes
+            ctx.strokeStyle = axisColor;
+            ctx.lineWidth = 2;
+            const origin = mathToPixel(0, 0);
+            
+            // X Axis
+            ctx.beginPath(); ctx.moveTo(0, origin.py); ctx.lineTo(w, origin.py); ctx.stroke();
+            // Y Axis
+            ctx.beginPath(); ctx.moveTo(origin.px, 0); ctx.lineTo(origin.px, h); ctx.stroke();
+        }
+
+        function drawPoint(mathX, mathY, color = '#3b82f6') {
+            const { px, py } = mathToPixel(mathX, mathY);
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+        }
+
+        function drawLineEq(eq, color = '#3b82f6') {
+            // y = (c - ax) / b
+            // Find points at boundaries
+            let x1 = MATH_MIN;
+            let y1 = (eq.c - eq.a * x1) / eq.b;
+            let x2 = MATH_MAX;
+            let y2 = (eq.c - eq.a * x2) / eq.b;
+
+            const p1 = mathToPixel(x1, y1);
+            const p2 = mathToPixel(x2, y2);
+
+            ctx.beginPath();
+            ctx.moveTo(p1.px, p1.py);
+            ctx.lineTo(p2.px, p2.py);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        function renderCanvasState() {
+            drawGrid();
+            if (state.graphData.points1.length >= 2 && state.labStep > 4) {
+                drawLineEq(graphQuestions[state.qIndex].eq1, '#3b82f6');
+            }
+            if (state.graphData.points2.length >= 2 && state.labStep > 9) {
+                drawLineEq(graphQuestions[state.qIndex].eq2, '#22c55e');
+            }
+            // Draw points
+            state.graphData.points1.forEach(p => drawPoint(p.x, p.y, '#3b82f6'));
+            state.graphData.points2.forEach(p => drawPoint(p.x, p.y, '#22c55e'));
+            
+            // Draw ghost point & presisi crosshair ungu saat kursor bergerak
+            if (isPlottingMode && isCanvasHovered && mousePos.mathX !== null) {
+                const snapX = Math.round(mousePos.mathX);
+                const snapY = Math.round(mousePos.mathY);
+                const { px, py } = mathToPixel(snapX, snapY);
+                
+                ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)'; // Ungu transparan
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                
+                // Crosshair vertikal & horizontal
+                ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, canvas.height); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(canvas.width, py); ctx.stroke();
+                
+                ctx.setLineDash([]);
+                
+                // Marker Bayangan
+                ctx.beginPath();
+                ctx.arc(px, py, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(168, 85, 247, 0.5)';
+                ctx.fill();
+            }
+        }
+
+        // Canvas Hover Interactions
+        canvas.addEventListener('mouseenter', () => {
+            isCanvasHovered = true;
+            if (isPlottingMode) renderCanvasState(); // Update warna grid jika sedang plotting
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isPlottingMode) return;
+            const rect = canvas.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            const py = e.clientY - rect.top;
+            mousePos = pixelToMath(px, py);
+            renderCanvasState(); // Update crosshair yang mengikuti mouse
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isCanvasHovered = false;
+            mousePos = { mathX: null, mathY: null };
+            if (isPlottingMode) renderCanvasState(); // Kembalikan warna grid
+        });
+        
+        // Touch events untuk presisi di HP
+        canvas.addEventListener('touchmove', (e) => {
+            if (!isPlottingMode) return;
+            e.preventDefault(); // Mencegah layar ter-scroll
+            isCanvasHovered = true;
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const px = touch.clientX - rect.left;
+            const py = touch.clientY - rect.top;
+            mousePos = pixelToMath(px, py);
+            renderCanvasState();
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            isCanvasHovered = false;
+            mousePos = { mathX: null, mathY: null };
+            if (isPlottingMode) renderCanvasState();
+        });
+
+        // Canvas Interaction (Klik/Tap)
+        canvas.addEventListener('click', (e) => {
+            if (!isPlottingMode) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            const py = e.clientY - rect.top;
+            const { mathX, mathY } = pixelToMath(px, py);
+            
+            // Membulatkan ke koordinat bulat terdekat (SNAP TO GRID) agar sangat presisi
+            const snapX = Math.round(mathX);
+            const snapY = Math.round(mathY);
+            
+            if (snapX === state.graphData.targetX && snapY === state.graphData.targetY) {
+                // Sukses
+                playSound('success');
+                isPlottingMode = false;
+                
+                if (state.graphData.currentEq === 1) {
+                    state.graphData.points1.push({x: state.graphData.targetX, y: state.graphData.targetY});
+                    document.getElementById('g-table-1').innerHTML += `<div>(${state.graphData.targetX}, ${state.graphData.targetY})</div>`;
+                } else {
+                    state.graphData.points2.push({x: state.graphData.targetX, y: state.graphData.targetY});
+                    document.getElementById('g-table-2').innerHTML += `<div>(${state.graphData.targetX}, ${state.graphData.targetY})</div>`;
+                }
+                
+                renderCanvasState();
+                showBotMessage("🎯 Tepat sekali! Titik diletakkan di koordinat yang benar.", "Lanjut ke langkah berikutnya.");
+                
+                setTimeout(() => {
+                    state.labStep++;
+                    runGraphStep();
+                }, 1500);
+
+            } else {
+                // Gagal
+                playSound('error');
+                // Tampilkan marker sementara warna merah sesuai koordinat SNAP yang diklik
+                renderCanvasState();
+                drawPoint(snapX, snapY, '#ef4444');
+                showBotMessage(`❌ Belum tepat. Kamu meletakkan di koordinat (${snapX}, ${snapY}).<br>Cari (${state.graphData.targetX}, ${state.graphData.targetY}).`, `Ingat: x pada sumbu horizontal, y pada sumbu vertikal.`);
+                setTimeout(renderCanvasState, 1500); // Bersihkan marker salah
+            }
+        });
+
+        function initGraphLab() {
+            resizeCanvas();
+            state.labStep = 1;
+            state.graphData = { points1: [], points2: [], currentEq: 1, targetX: null, targetY: null };
+            const q = graphQuestions[state.qIndex];
+            
+            document.getElementById('g-eq1-text').innerText = q.eq1.text;
+            document.getElementById('g-eq2-text').innerText = q.eq2.text;
+            document.getElementById('g-table-1').innerHTML = '';
+            document.getElementById('g-table-2').innerHTML = '';
+            
+            renderCanvasState();
+            runGraphStep();
+        }
+
+        function runGraphStep() {
+            const container = document.getElementById('g-step-container');
+            const q = graphQuestions[state.qIndex];
+            
+            let html = '';
+            
+            switch(state.labStep) {
+                // --- PERSAMAAN 1 ---
+                case 1: // Pilih X pertama untuk Eq1
+                    showBotMessage("Kita mulai dari Persamaan Biru. Untuk membuat garis, kita butuh minimal 2 titik. Mari tentukan nilai X pertama.", "Pilih salah satu angka di panel.");
+                    html = `
+                        <h4 class="text-blue-400 font-bold mb-2">Langkah 1: Persamaan 1</h4>
+                        <p class="text-sm text-slate-300 mb-4">Pilih nilai <span class="font-mono text-white text-lg font-bold">x</span>:</p>
+                        <div class="flex flex-wrap gap-4 justify-start">
+                            ${q.xChoices1.slice(0, 3).map(val => `<button class="bg-slate-700 hover:bg-blue-600 px-6 py-2 rounded font-mono font-bold transition transform hover:scale-105" onclick="g_handleXSelect(1, ${val})">${val}</button>`).join('')}
+                        </div>
+                    `;
+                    break;
+                case 2: // Hitung Y pertama Eq1
+                    const x1 = state.graphData.targetX;
+                    const y1_ans = (q.eq1.c - q.eq1.a * x1) / q.eq1.b;
+                    showBotMessage(`Bagus! Jika x = ${x1}, masukkan ke persamaan: <br>${q.eq1.text}.<br>Berapa nilai y?`, `Hitung: ${q.eq1.a!==1?q.eq1.a:''}(${x1}) + ${q.eq1.b!==1?q.eq1.b:''}y = ${q.eq1.c}`);
+                    html = `
+                        <p class="text-sm text-slate-300 mb-2">Substitusi x = ${x1} ke persamaan biru:</p>
+                        <div class="math-text text-lg bg-slate-900 p-3 rounded text-center mb-4 border border-slate-700">
+                            ${q.eq1.a}(${x1}) ${q.eq1.b>0?'+':'-'} ${Math.abs(q.eq1.b)===1?'y':Math.abs(q.eq1.b)+'y'} = ${q.eq1.c}
+                        </div>
+                        <p class="text-sm text-slate-300 mb-2">Maka nilai y = ?</p>
+                        <div class="flex gap-2">
+                            <input type="number" id="g-input-y" class="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-center font-mono">
+                            <button class="bg-blue-600 px-4 py-1 rounded font-bold" onclick="g_verifyY(${y1_ans})">CEK</button>
+                        </div>
+                    `;
+                    break;
+                case 3: // Plot Titik 1
+                    isPlottingMode = true;
+                    showBotMessage(`Koordinat pertama adalah (${state.graphData.targetX}, ${state.graphData.targetY}).<br>Ketuk area kanvas untuk meletakkan titik biru ini.`, "Garis mendatar adalah X, garis tegak adalah Y.");
+                    html = `
+                        <div class="text-center animate-pulse">
+                            <p class="text-blue-400 font-bold text-lg mb-2">TUGAS: PLOT TITIK PADA GRAFIK</p>
+                            <div class="text-2xl font-mono bg-blue-900/50 inline-block px-4 py-2 rounded-lg border border-blue-500 text-blue-200">
+                                (${state.graphData.targetX}, ${state.graphData.targetY})
+                            </div>
+                            <p class="text-sm mt-4 text-slate-400">Ketuk layar di area grafik sebelah kanan.</p>
+                        </div>
+                    `;
+                    break;
+                case 4: // Pilih X kedua Eq1
+                     html = `
+                        <h4 class="text-blue-400 font-bold mb-2">Langkah 2: Titik Kedua</h4>
+                        <p class="text-sm text-slate-300 mb-4">Pilih nilai <span class="font-mono text-white text-lg font-bold">x</span> lainnya:</p>
+                        <div class="flex flex-wrap gap-4 justify-start">
+                            ${q.xChoices1.slice(3, 6).map(val => `<button class="bg-slate-700 hover:bg-blue-600 px-6 py-2 rounded font-mono font-bold transition transform hover:scale-105" onclick="g_handleXSelect(1, ${val})">${val}</button>`).join('')}
+                        </div>
+                    `;
+                    break;
+                case 5: // Hitung Y kedua Eq1
+                    const x2 = state.graphData.targetX;
+                    const y2_ans = (q.eq1.c - q.eq1.a * x2) / q.eq1.b;
+                    html = `
+                        <p class="text-sm text-slate-300 mb-2">Substitusi x = ${x2} ke persamaan biru:</p>
+                        <div class="flex gap-2 items-center mt-4">
+                            <span>y = </span>
+                            <input type="number" id="g-input-y" class="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-center font-mono">
+                            <button class="bg-blue-600 px-4 py-1 rounded font-bold" onclick="g_verifyY(${y2_ans})">CEK</button>
+                        </div>
+                    `;
+                    break;
+                case 6: // Plot Titik 2 Eq1
+                    isPlottingMode = true;
+                    showBotMessage(`Letakkan titik kedua: (${state.graphData.targetX}, ${state.graphData.targetY}) di grafik.`);
+                    html = `
+                        <div class="text-center animate-pulse">
+                            <p class="text-blue-400 font-bold mb-2">PLOT TITIK KEDUA</p>
+                            <div class="text-2xl font-mono text-blue-300">(${state.graphData.targetX}, ${state.graphData.targetY})</div>
+                        </div>
+                    `;
+                    break;
+                case 7: // Hubungkan Garis 1
+                    html = `
+                        <div class="text-center">
+                            <p class="text-slate-300 mb-4">Dua titik sudah ditemukan. Sekarang kita bisa menarik garis untuk Persamaan 1.</p>
+                            <button class="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-lg font-bold w-full" onclick="g_drawLineStep()">HUBUNGKAN TITIK</button>
+                        </div>
+                    `;
+                    break;
+
+                // --- PERSAMAAN 2 --- (Diringkas flow-nya untuk UI, tapi logic sama)
+                case 8: // Persamaan 2 Start
+                    state.graphData.currentEq = 2;
+                    showBotMessage("Sekarang Persamaan Hijau. Lakukan hal yang sama.", "Pilih x.");
+                    html = `
+                        <h4 class="text-green-400 font-bold mb-2">Langkah 3: Persamaan 2</h4>
+                         <p class="text-sm text-slate-300 mb-4">Pilih nilai <span class="font-mono text-white text-lg font-bold">x</span>:</p>
+                        <div class="flex flex-wrap gap-4 justify-start">
+                            ${q.xChoices2.slice(0, 3).map(val => `<button class="bg-slate-700 hover:bg-green-600 px-6 py-2 rounded font-mono font-bold transition transform hover:scale-105" onclick="g_handleXSelect(2, ${val})">${val}</button>`).join('')}
+                        </div>
+                    `;
+                    break;
+                case 9:
+                    const x3 = state.graphData.targetX;
+                    const y3_ans = (q.eq2.c - q.eq2.a * x3) / q.eq2.b;
+                    html = `<p class="text-sm mb-2">Hitung y jika x = ${x3} untuk ${q.eq2.text}</p>
+                            <div class="flex gap-2 items-center"><input type="number" id="g-input-y" class="w-20 text-center font-mono text-black rounded"><button class="bg-green-600 px-4 py-1 rounded font-bold" onclick="g_verifyY(${y3_ans})">CEK</button></div>`;
+                    break;
+                case 10:
+                    isPlottingMode = true;
+                    html = `<div class="text-center text-green-400 font-bold"><p>PLOT TITIK: (${state.graphData.targetX}, ${state.graphData.targetY})</p></div>`;
+                    break;
+                case 11:
+                    html = `
+                        <p class="mb-4">Pilih X kedua untuk Persamaan Hijau:</p>
+                        <div class="flex flex-wrap gap-4 justify-start">
+                            ${q.xChoices2.slice(3, 6).map(val => `<button class="bg-slate-700 hover:bg-green-600 px-6 py-2 rounded font-mono font-bold transition transform hover:scale-105" onclick="g_handleXSelect(2, ${val})">${val}</button>`).join('')}
+                        </div>
+                    `;
+                    break;
+                case 12:
+                    const x4 = state.graphData.targetX;
+                    const y4_ans = (q.eq2.c - q.eq2.a * x4) / q.eq2.b;
+                    html = `<p class="text-sm mb-2">Hitung y jika x = ${x4}</p>
+                            <div class="flex gap-2 items-center"><input type="number" id="g-input-y" class="w-20 text-center font-mono text-black rounded"><button class="bg-green-600 px-4 py-1 rounded font-bold" onclick="g_verifyY(${y4_ans})">CEK</button></div>`;
+                    break;
+                case 13:
+                    isPlottingMode = true;
+                    html = `<div class="text-center text-green-400 font-bold"><p>PLOT TITIK: (${state.graphData.targetX}, ${state.graphData.targetY})</p></div>`;
+                    break;
+                case 14:
+                    html = `<div class="text-center"><button class="bg-green-600 px-6 py-3 rounded-lg font-bold w-full" onclick="g_drawLineStep()">HUBUNGKAN TITIK HIJAU</button></div>`;
+                    break;
+                
+                // --- OBSERVASI & KESIMPULAN ---
+                case 15:
+                    showBotMessage("Amati kedua garis di grafik. Apakah mereka berpotongan?", "Titik temu adalah solusi SPLDV.");
+                    html = `
+                        <h4 class="text-yellow-400 font-bold mb-4 text-xl">Misi Terakhir</h4>
+                        <p class="text-slate-300 mb-6">Perhatikan grafik. Di mana kedua garis bertemu?</p>
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono text-xl w-10 text-right">x =</span>
+                                <input type="number" id="ans-x" class="w-20 bg-slate-900 border border-slate-500 rounded p-2 text-center font-mono text-white text-xl">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono text-xl w-10 text-right">y =</span>
+                                <input type="number" id="ans-y" class="w-20 bg-slate-900 border border-slate-500 rounded p-2 text-center font-mono text-white text-xl">
+                            </div>
+                            <button class="mt-4 bg-lab-master hover:bg-purple-600 py-3 rounded-lg font-bold" onclick="g_verifyFinal()">PERIKSA SOLUSI</button>
+                        </div>
+                    `;
+                    break;
+                case 16:
+                    html = `
+                        <div class="text-center">
+                            <h2 class="text-3xl mb-2">🎉 BENAR!</h2>
+                            <p class="text-green-400 font-bold text-lg mb-4">Solusi: (${q.sol.x}, ${q.sol.y})</p>
+                            <div class="bg-slate-900 p-4 rounded text-left text-sm mb-6">
+                                <p class="text-slate-400 mb-2 font-bold">Verifikasi:</p>
+                                <p class="text-blue-300">Persamaan 1: ${q.eq1.a}(${q.sol.x}) + ${q.eq1.b}(${q.sol.y}) = ${q.eq1.c} ✅</p>
+                                <p class="text-green-300">Persamaan 2: ${q.eq2.a}(${q.sol.x}) + ${q.eq2.b}(${q.sol.y}) = ${q.eq2.c} ✅</p>
+                            </div>
+                            <button class="bg-yellow-500 text-black hover:bg-yellow-400 px-6 py-3 rounded-lg font-bold w-full" onclick="finishLab('graph')">SELESAIKAN LAB</button>
+                        </div>
+                    `;
+                    // Animasi titik potong
+                    drawPoint(q.sol.x, q.sol.y, '#facc15'); // Yellow
+                    addScore();
+                    break;
+            }
+            container.innerHTML = html;
+        }
+
+        // Helper functions for Graph Lab interactions
+        function g_handleXSelect(eqNum, xVal) {
+            playSound('click');
+            state.graphData.targetX = xVal;
+            state.labStep++;
+            runGraphStep();
+        }
+
+        function g_verifyY(correctY) {
+            const input = document.getElementById('g-input-y').value;
+            if (input == correctY) {
+                playSound('success');
+                state.graphData.targetY = correctY;
+                state.labStep++;
+                runGraphStep();
+            } else {
+                playSound('error');
+                showBotMessage("❌ Hitunganmu kurang tepat. Coba hitung lagi.", `Substitusikan x dengan hati-hati.`);
+            }
+        }
+
+        function g_drawLineStep() {
+            playSound('success');
+            renderCanvasState(); // This will automatically draw lines if points >= 2
+            state.labStep++;
+            runGraphStep();
+        }
+
+        function g_verifyFinal() {
+            const x = document.getElementById('ans-x').value;
+            const y = document.getElementById('ans-y').value;
+            const q = graphQuestions[state.qIndex];
+            
+            if (x == q.sol.x && y == q.sol.y) {
+                state.labStep++;
+                runGraphStep();
+            } else {
+                playSound('error');
+                showBotMessage("❌ Titik perpotongan salah.", "Tarik garis lurus dari titik pertemuan ke bawah untuk melihat nilai X, dan ke kiri untuk melihat nilai Y.");
+            }
+        }
+
+
+        // ==========================================
+        // SUBSTITUTION LAB LOGIC
+        // ==========================================
+        function initSubLab() {
+            state.labStep = 1;
+            const q = subQuestions[state.qIndex];
+            document.getElementById('s-eq1-text').innerText = q.eq1;
+            document.getElementById('s-eq2-text').innerText = q.eq2;
+            runSubStep();
+        }
+
+        function runSubStep() {
+            const container = document.getElementById('s-step-container');
+            const q = subQuestions[state.qIndex];
+            let html = '';
+
+            switch(state.labStep) {
+                case 1:
+                    showBotMessage("Metode Substitusi berarti mengganti. Lihat Persamaan 1, variabel apa yang sudah berdiri sendiri?", "Pilih variabel yang sudah dalam bentuk y=... atau x=...");
+                    html = `
+                        <h4 class="text-blue-400 font-bold mb-4">Langkah 1: Identifikasi</h4>
+                        <p class="mb-4">Pada persamaan biru (<span class="font-mono text-blue-300">${q.eq1}</span>), variabel apa yang nilainya diketahui dalam bentuk ekspresi lain?</p>
+                        <div class="flex gap-4 justify-center">
+                            <button class="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-mono font-bold text-xl" onclick="s_checkVar('x')">x</button>
+                            <button class="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-mono font-bold text-xl" onclick="s_checkVar('y')">y</button>
+                        </div>
+                    `;
+                    break;
+                case 2:
+                    html = `
+                        <h4 class="text-blue-400 font-bold mb-4">Langkah 2: Substitusi</h4>
+                        <p class="mb-4 text-sm text-slate-300">Ganti variabel <strong>${q.subType}</strong> pada persamaan hijau (<span class="text-green-300">${q.eq2}</span>) dengan <span class="text-blue-300">(${q.subExpr})</span>.</p>
+                        <p class="mb-2">Bentuk persamaan baru:</p>
+                        <div class="flex flex-wrap gap-2 items-center justify-center text-xl font-mono bg-slate-900 p-4 rounded">
+                            ${q.subType === 'y' ? `<span>x + </span><input type="text" id="s-expr" class="w-32 bg-slate-800 text-center border-b-2 border-blue-500 outline-none text-blue-300" placeholder="..."><span> = 8</span>` 
+                                                : `<span>(</span><input type="text" id="s-expr" class="w-32 bg-slate-800 text-center border-b-2 border-blue-500 outline-none text-blue-300" placeholder="..."><span>) + y = 9</span>`}
+                        </div>
+                        <div class="text-center mt-6">
+                            <button class="bg-blue-600 px-6 py-2 rounded font-bold" onclick="s_checkExpr('${q.subExpr}')">LANJUT</button>
+                        </div>
+                    `;
+                    break;
+                case 3:
+                     html = `
+                        <h4 class="text-green-400 font-bold mb-4">Langkah 3: Hitung Nilai</h4>
+                        <p class="mb-4 text-sm text-slate-300">Selesaikan persamaan linear satu variabel yang baru terbentuk.</p>
+                        <div class="flex items-center justify-center gap-4 text-2xl font-mono">
+                            <span>${q.subType === 'y' ? 'x' : 'y'} = </span>
+                            <input type="number" id="s-val1" class="w-20 bg-slate-900 border border-slate-500 rounded p-2 text-center">
+                        </div>
+                        <div class="text-center mt-6">
+                            <button class="bg-green-600 px-6 py-2 rounded font-bold" onclick="s_checkVal1(${q.subType === 'y' ? q.ansX : q.ansY})">CEK</button>
+                        </div>
+                    `;
+                    break;
+                case 4:
+                     html = `
+                        <h4 class="text-yellow-400 font-bold mb-4">Langkah 4: Cari Variabel Kedua</h4>
+                        <p class="mb-4 text-sm text-slate-300">Masukkan nilai <span class="font-mono text-white">${q.subType === 'y' ? 'x = '+q.ansX : 'y = '+q.ansY}</span> ke persamaan biru (<span class="text-blue-300">${q.eq1}</span>).</p>
+                        <div class="flex items-center justify-center gap-4 text-2xl font-mono">
+                            <span>${q.subType} = </span>
+                            <input type="number" id="s-val2" class="w-20 bg-slate-900 border border-slate-500 rounded p-2 text-center">
+                        </div>
+                        <div class="text-center mt-6">
+                            <button class="bg-yellow-600 px-6 py-2 rounded font-bold" onclick="s_checkVal2(${q.subType === 'y' ? q.ansY : q.ansX})">VERIFIKASI HASIL</button>
+                        </div>
+                    `;
+                    break;
+                case 5:
+                    html = `
+                        <div class="text-center py-8">
+                            <div class="text-5xl mb-4">✅</div>
+                            <h2 class="text-2xl font-bold mb-2">Kerja Bagus!</h2>
+                            <p class="text-slate-300 mb-6">Solusi SPLDV ini adalah (${q.ansX}, ${q.ansY}).</p>
+                            <button class="bg-lab-success hover:bg-green-500 px-8 py-3 rounded-lg font-bold text-white shadow-lg" onclick="finishLab('sub')">SELESAIKAN LAB</button>
+                        </div>
+                    `;
+                    addScore();
+                    break;
+            }
+            container.innerHTML = html;
+        }
+
+        function s_checkVar(ans) {
+            const q = subQuestions[state.qIndex];
+            if(ans === q.subType) { playSound('success'); state.labStep++; runSubStep(); }
+            else { playSound('error'); showBotMessage("Coba perhatikan persamaan biru. Variabel mana yang terisolasi sendiri di satu sisi?", "Tanda = memisahkan variabel tersebut."); }
+        }
+        function s_checkExpr(correct) {
+            const val = document.getElementById('s-expr').value.replace(/\s/g, '');
+            if(val === correct.replace(/\s/g, '')) { playSound('success'); state.labStep++; runSubStep(); }
+            else { playSound('error'); showBotMessage("Ekspresinya kurang tepat. Cukup ketik ulang persis seperti di Persamaan 1."); }
+        }
+        function s_checkVal1(correct) {
+            if(document.getElementById('s-val1').value == correct) { playSound('success'); state.labStep++; runSubStep(); }
+            else { playSound('error'); showBotMessage("Hitungan salah. Kumpulkan variabel di satu sisi, dan konstanta (angka) di sisi lain."); }
+        }
+        function s_checkVal2(correct) {
+            if(document.getElementById('s-val2').value == correct) { playSound('success'); state.labStep++; runSubStep(); }
+            else { playSound('error'); showBotMessage("Hitungan akhir salah. Ganti variabel dengan angka yang baru ditemukan dan operasikan."); }
+        }
+
+
+        // ==========================================
+        // ELIMINATION LAB LOGIC
+        // ==========================================
+        function initElimLab() {
+            state.labStep = 1;
+            const q = elimQuestions[state.qIndex];
+            document.getElementById('e-eq1-text').innerText = q.eq1;
+            document.getElementById('e-eq2-text').innerText = q.eq2;
+            runElimStep();
+        }
+
+        function runElimStep() {
+            const container = document.getElementById('e-step-container');
+            const q = elimQuestions[state.qIndex];
+            let html = '';
+
+            switch(state.labStep) {
+                case 1:
+                    showBotMessage("Metode Eliminasi bertujuan menghilangkan satu variabel. Lihat koefisien x dan y pada kedua persamaan.", "Variabel mana yang angkanya (atau nilai mutlaknya) sama?");
+                    html = `
+                        <h4 class="text-orange-400 font-bold mb-4">Langkah 1: Pilih Target</h4>
+                        <p class="mb-4 text-sm text-slate-300">Variabel mana yang memiliki koefisien (angka di depan huruf) sama besar antara persamaan atas dan bawah, sehingga mudah dihilangkan?</p>
+                        <div class="flex gap-4 justify-center">
+                            <button class="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-mono font-bold text-xl" onclick="e_checkVar('x')">x</button>
+                            <button class="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-mono font-bold text-xl" onclick="e_checkVar('y')">y</button>
+                        </div>
+                    `;
+                    break;
+                case 2:
+                    html = `
+                        <h4 class="text-orange-400 font-bold mb-4">Langkah 2: Operasi</h4>
+                        <p class="mb-4 text-sm text-slate-300">Agar variabel <strong>${q.elimVar}</strong> hilang (menjadi 0), operasi apa yang harus dilakukan pada kedua persamaan?</p>
+                        <div class="math-text text-lg bg-slate-900 p-4 rounded text-center mb-6">
+                            <div class="text-blue-300 mb-1">${q.eq1}</div>
+                            <div class="text-green-300 border-b border-slate-600 pb-1">${q.eq2}</div>
+                        </div>
+                        <div class="flex gap-4 justify-center">
+                            <button class="bg-slate-700 hover:bg-orange-600 px-8 py-3 rounded font-bold text-xl" onclick="e_checkOp('+')">TAMBAH (+)</button>
+                            <button class="bg-slate-700 hover:bg-orange-600 px-8 py-3 rounded font-bold text-xl" onclick="e_checkOp('-')">KURANG (-)</button>
+                        </div>
+                    `;
+                    break;
+                case 3:
+                     html = `
+                        <h4 class="text-orange-400 font-bold mb-4">Langkah 3: Hitung Hasil</h4>
+                        <p class="mb-4 text-sm text-slate-300">Lakukan operasi <strong>${q.op}</strong> ke bawah untuk menemukan persamaan baru.</p>
+                        <div class="math-text text-lg bg-slate-900 p-4 rounded text-center mb-6 relative w-64 mx-auto">
+                            <div class="text-blue-300 text-right pr-6">${q.eq1}</div>
+                            <div class="text-green-300 text-right pr-6 border-b border-slate-600 pb-1">${q.eq2}</div>
+                            <div class="absolute right-2 bottom-2 text-orange-400 font-bold text-2xl">${q.op}</div>
+                        </div>
+                        <div class="text-center">
+                            <input type="text" id="e-res" class="w-48 bg-slate-900 border border-orange-500 rounded p-2 text-center font-mono text-xl text-white mb-4" placeholder="Misal: 3x = 12">
+                            <br>
+                            <button class="bg-orange-600 px-6 py-2 rounded font-bold" onclick="e_checkRes('${q.resEq}')">CEK HASIL</button>
+                        </div>
+                    `;
+                    break;
+                case 4:
+                    const remVar = q.elimVar === 'y' || q.elimVar === '3y' ? 'x' : 'y';
+                    const remAns = remVar === 'x' ? q.xVal : q.yVal;
+                    html = `
+                        <h4 class="text-yellow-400 font-bold mb-4">Langkah 4: Solusi Akhir</h4>
+                        <p class="mb-4 text-sm text-slate-300">Berdasarkan hasil <span class="font-mono text-white">${q.resEq}</span>, maka <strong>${remVar} = ${remAns}</strong>.</p>
+                        <p class="mb-4 text-sm text-slate-300">Sekarang substitusikan ${remVar} = ${remAns} ke salah satu persamaan awal untuk mencari variabel lainnya.</p>
+                        
+                        <div class="flex items-center justify-center gap-4 text-2xl font-mono mb-6 bg-slate-900 p-4 rounded">
+                            <span>x = </span> <input type="number" id="e-fin-x" class="w-16 bg-slate-800 border-b border-slate-500 text-center">
+                            <span class="ml-4">y = </span> <input type="number" id="e-fin-y" class="w-16 bg-slate-800 border-b border-slate-500 text-center">
+                        </div>
+                        <div class="text-center">
+                            <button class="bg-yellow-600 px-8 py-3 rounded-lg font-bold" onclick="e_checkFinal(${q.xVal}, ${q.yVal})">SELESAIKAN</button>
+                        </div>
+                    `;
+                    break;
+                 case 5:
+                    html = `
+                        <div class="text-center py-8">
+                            <div class="text-5xl mb-4">🚀</div>
+                            <h2 class="text-2xl font-bold mb-2">Eliminasi Berhasil!</h2>
+                            <p class="text-slate-300 mb-6">Solusi SPLDV ini adalah (${q.xVal}, ${q.yVal}).</p>
+                            <button class="bg-lab-warning hover:bg-orange-500 px-8 py-3 rounded-lg font-bold text-white shadow-lg" onclick="finishLab('elim')">KEMBALI KE DASHBOARD</button>
+                        </div>
+                    `;
+                    addScore();
+                    break;
+            }
+            container.innerHTML = html;
+        }
+
+        function e_checkVar(ans) {
+            const q = elimQuestions[state.qIndex];
+            if((ans === 'x' && (q.elimVar === 'x' || q.elimVar === '2x')) || (ans === 'y' && (q.elimVar === 'y' || q.elimVar === '3y'))) {
+                playSound('success'); state.labStep++; runElimStep();
+            } else { playSound('error'); showBotMessage("Perhatikan angka di depan variabel. Mana yang angkanya sama?", "Jika x di atas 2 dan di bawah 1, belum bisa. Cari yang sama."); }
+        }
+        function e_checkOp(ans) {
+            const q = elimQuestions[state.qIndex];
+            if(ans === q.op) { playSound('success'); state.labStep++; runElimStep(); }
+            else { playSound('error'); showBotMessage("Jika tandanya berbeda (satu + satu -), gunakan Tambah (+). Jika tandanya sama, gunakan Kurang (-).", "Tujuannya agar hasilnya 0."); }
+        }
+        function e_checkRes(correct) {
+            const val = document.getElementById('e-res').value.replace(/\s/g, '');
+            if(val === correct.replace(/\s/g, '')) { playSound('success'); state.labStep++; runElimStep(); }
+            else { playSound('error'); showBotMessage("Operasikan x dengan x, y dengan y, dan angka dengan angka."); }
+        }
+        function e_checkFinal(cx, cy) {
+            const vx = document.getElementById('e-fin-x').value;
+            const vy = document.getElementById('e-fin-y').value;
+            if(vx == cx && vy == cy) { playSound('success'); state.labStep++; runElimStep(); }
+            else { playSound('error'); showBotMessage("Jawaban akhir belum tepat. Cek kembali perhitungan substitusimu."); }
+        }
+
+
+        function finishLab(labName) {
+            playSound('unlock');
+            state.labsCompleted[labName] = true;
+            
+            if(state.labsCompleted.graph && state.labsCompleted.sub && state.labsCompleted.elim) {
+                showBotMessage("🎉 LUAR BIASA! Ketiga kode telah didapatkan. MASTER LAB SEKARANG TERBUKA!", "Kembali ke Dashboard untuk ujian akhir.");
+            } else {
+                showBotMessage("Misi berhasil! Bagian kode telah diunduh.", "Kembali ke Dashboard untuk melanjutkan.");
+            }
+            
+            navTo('dash');
+        }
+
+        function calculateReward() {
+            const score = state.score;
+            let title = "🌱 Algebra Explorer";
+            if (score >= 30) title = "👑 SPLDV Master";
+            else if (score >= 20) title = "🚀 SPLDV Expert";
+            else if (score >= 10) title = "⭐ SPLDV Solver";
+            
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-badge').innerText = title;
+        }
+
+        // Hook navigation to update reward screen if it's the target
+        const originalNavTo = navTo;
+        navTo = function(viewId) {
+            if(viewId === 'reward') calculateReward();
+            originalNavTo(viewId);
+        }
+
+        // Initialize App
+        window.onload = () => {
+            console.log("SPLDV Mission Lab Initialized.");
+            // Prevent zooming on mobile inputs
+            document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+        };
+
+    </script>
+</body>
+</html>
