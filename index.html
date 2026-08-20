@@ -27,11 +27,17 @@
         body { background-color: #0f172a; color: #f8fafc; overflow-x: hidden; user-select: none; -webkit-user-select: none; }
         .view-section { display: none; min-height: 100vh; width: 100%; }
         .view-section.active { display: flex; }
-        #mazeCanvas { background-color: #0f172a; border: 4px solid #334155; border-radius: 0.5rem; box-shadow: 0 0 20px rgba(0,0,0,0.5); max-width: 100%; touch-action: none; }
+        #mazeCanvas { background-color: #0f172a; border: 4px solid #334155; border-radius: 0.5rem; box-shadow: 0 0 20px rgba(0,0,0,0.5); display: block; touch-action: none; }
+        #view-maze.active { min-height: 0; height: auto; }
+        main.maze-mode { padding-bottom: 0 !important; overflow: hidden; height: 100dvh; height: 100vh; display: flex; flex-direction: column; }
+        main.maze-mode #view-maze.active { flex: 1 1 auto; min-height: 0; }
+        body.maze-lock { overflow: hidden; position: fixed; width: 100%; }
         #graphCanvas { background-color: #ffffff; border-radius: 0.5rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.1); cursor: crosshair; touch-action: none; width: 100%; max-width: 400px; aspect-ratio: 1 / 1; }
         #graphCanvas:hover { box-shadow: inset 0 0 15px rgba(168, 85, 247, 0.3); }
         .math-text { font-family: 'Space Mono', monospace; letter-spacing: 0.05em; }
         .bot-bubble::after { content: ''; position: absolute; bottom: -10px; left: 20px; border-width: 10px 10px 0; border-style: solid; border-color: #0ea5e9 transparent transparent transparent; }
+        @keyframes shakeWrong { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); } 30%, 50%, 70% { transform: translateX(-8px); } 40%, 60% { transform: translateX(8px); } }
+        .shake-wrong { animation: shakeWrong 0.5s cubic-bezier(.36,.07,.19,.97) both; border: 1px solid #ef4444 !important; }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
@@ -153,12 +159,12 @@
         </section>
 
         <!-- MAZE GAME VIEW -->
-        <section id="view-maze" class="view-section flex-col items-center p-2 md:p-6 justify-center">
-            <div class="text-center mb-4">
-                <h2 class="text-2xl font-bold text-white tracking-wider">SEKTOR LABIRIN</h2>
-                <p class="text-slate-400 text-sm">Usap (Swipe) area labirin atau gunakan Keyboard (WASD) untuk bergerak.</p>
+        <section id="view-maze" class="view-section flex-col items-center justify-center p-2 md:p-6 overflow-hidden">
+            <div id="maze-header" class="text-center mb-2 md:mb-4 shrink-0">
+                <h2 class="text-lg md:text-2xl font-bold text-white tracking-wider">SEKTOR LABIRIN</h2>
+                <p class="text-slate-400 text-xs md:text-sm">Usap (Swipe) area labirin atau gunakan Keyboard (WASD) untuk bergerak.</p>
             </div>
-            <div class="relative bg-lab-card p-2 rounded-xl shadow-2xl inline-block mx-auto border border-slate-700">
+            <div id="maze-canvas-card" class="relative bg-lab-card p-2 rounded-xl shadow-2xl mx-auto border border-slate-700 shrink-0">
                 <canvas id="mazeCanvas" width="450" height="330"></canvas>
                 
                 <!-- WORLD TRANSITION OVERLAY -->
@@ -236,7 +242,7 @@
                     <div><span class="text-xs text-yellow-400 font-bold tracking-wider">FINAL STAGE</span><h2 class="text-xl font-bold text-lab-master">👑 MASTER LAB</h2></div>
                     <button onclick="navTo('maze')" class="text-sm bg-slate-700 px-3 py-1 rounded hover:bg-slate-600">Keluar</button>
                 </div>
-                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 text-center shadow-lg">
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 text-center shadow-lg" id="master-step-container">
                     <p class="text-slate-300 mb-6 text-sm md:text-base">Selesaikan sistem persamaan ini dengan metodemu sendiri!</p>
                     <div class="flex flex-col gap-3 math-text text-2xl text-center mb-8 bg-slate-900 p-6 rounded-lg border border-slate-600 inline-block px-10">
                         <div id="m-eq1-text" class="text-blue-300 tracking-wider">...</div>
@@ -306,6 +312,17 @@
         }
         function repeatHint() { playSound('click'); if(currentHintStr) document.getElementById('algobot-message').innerHTML = `💡 Hint: <br> ${currentHintStr}`; }
 
+        // Umpan balik visual saat jawaban salah, agar tombol tidak terasa "diam" tanpa respon.
+        function showWrongFeedback(msg, containerId) {
+            playSound('error');
+            showBotMessage(msg || "❌ Jawaban belum tepat, coba lagi.");
+            const container = containerId ? document.getElementById(containerId) : null;
+            if (container) {
+                container.classList.remove('shake-wrong'); void container.offsetWidth; container.classList.add('shake-wrong');
+                setTimeout(() => container.classList.remove('shake-wrong'), 500);
+            }
+        }
+
         function updateUI() {
             document.getElementById('ui-score').innerText = state.score; document.getElementById('ui-keys').innerText = state.keys;
             let hearts = ''; for(let i=0; i<state.lives; i++) hearts += '❤️'; for(let i=state.lives; i<3; i++) hearts += '🖤';
@@ -332,13 +349,47 @@
             initGame();
         }
 
+        let savedScrollY = 0;
         function navTo(viewId) {
             playSound('click'); if(viewId === 'intro' || viewId === 'maze') startBGM();
             if(viewId === 'reward') calculateReward();
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.getElementById(`view-${viewId}`).classList.add('active');
             state.inMaze = (viewId === 'maze'); if(state.inMaze) renderMaze();
+
+            const mainEl = document.querySelector('main');
+            if (viewId === 'maze') {
+                savedScrollY = window.scrollY || 0;
+                document.body.classList.add('maze-lock'); document.body.style.top = `-${savedScrollY}px`;
+                mainEl.classList.add('maze-mode');
+                fitMazeCanvas();
+                requestAnimationFrame(fitMazeCanvas);
+            } else {
+                document.body.classList.remove('maze-lock'); document.body.style.top = '';
+                mainEl.classList.remove('maze-mode');
+                window.scrollTo(0, savedScrollY);
+            }
         }
+
+        function fitMazeCanvas() {
+            const section = document.getElementById('view-maze');
+            if (!section.classList.contains('active')) return;
+            const header = document.getElementById('maze-header');
+            const headerH = header ? header.offsetHeight + 10 : 0; // + margin bawah header
+            const CARD_CHROME = 24; // padding kartu (p-2) + border canvas
+            const SAFE_GAP = 10;
+            const sectionRect = section.getBoundingClientRect();
+            const availableHeight = sectionRect.height - headerH - CARD_CHROME - SAFE_GAP;
+            const availableWidth = section.clientWidth - CARD_CHROME - SAFE_GAP;
+            const aspect = COLS / ROWS;
+            let w = availableWidth; let h = w / aspect;
+            if (h > availableHeight) { h = Math.max(availableHeight, 160); w = h * aspect; }
+            if (w > availableWidth) { w = availableWidth; h = w / aspect; }
+            mCanvas.style.width = Math.floor(w) + 'px';
+            mCanvas.style.height = Math.floor(h) + 'px';
+        }
+        window.addEventListener('resize', () => { if(state.inMaze) fitMazeCanvas(); });
+        window.addEventListener('orientationchange', () => { if(state.inMaze) setTimeout(fitMazeCanvas, 200); });
 
         function resetToCover() { state.currentWorld = 1; document.getElementById('world-indicator').innerText = `WORLD 1`; navTo('cover'); }
 
@@ -452,6 +503,143 @@
             mCtx.textAlign = "center"; mCtx.textBaseline = "middle"; mCtx.fillText(icon, 0, 2); mCtx.restore();
         }
 
+        function roundRectPath(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        // Ikon robot HERO (Algobot) digambar sebagai vektor di canvas — bukan emoji.
+        function drawHeroIcon(renderX, renderY, facing, isInvincible) {
+            let time = Date.now() / 200; let bounce = Math.sin(time + renderX) * 3;
+            const size = 10;
+            mCtx.save();
+            mCtx.translate(renderX + TILE / 2, renderY + TILE / 2 + bounce); mCtx.scale(facing, 1);
+
+            const bodyColor = '#1e3a8a';   // rangka biru navy
+            const plateColor = '#0c4a6e';  // panel wajah lebih gelap
+            const trimColor = isInvincible ? '#facc15' : '#7dd3fc'; // aksen: emas saat kebal, cyan biasa
+            const visorColor = isInvincible ? '#facc15' : '#38bdf8';
+            const headW = size * 1.7, headH = size * 1.5, headR = size * 0.32;
+            const headTop = -headH * 0.75;
+
+            mCtx.shadowColor = isInvincible ? 'rgba(250,204,21,0.9)' : 'rgba(56,189,248,0.7)';
+            mCtx.shadowBlur = isInvincible ? 12 : 8;
+
+            // Antena dengan lampu
+            mCtx.strokeStyle = trimColor; mCtx.lineWidth = 1.4;
+            mCtx.beginPath(); mCtx.moveTo(0, headTop); mCtx.lineTo(0, headTop - size * 0.45); mCtx.stroke();
+            mCtx.beginPath(); mCtx.arc(0, headTop - size * 0.5, size * 0.13, 0, Math.PI * 2); mCtx.fillStyle = trimColor; mCtx.fill();
+
+            // Kepala (kotak membulat)
+            roundRectPath(mCtx, -headW / 2, headTop, headW, headH, headR);
+            mCtx.fillStyle = bodyColor; mCtx.fill();
+            mCtx.lineWidth = 1.3; mCtx.strokeStyle = trimColor; mCtx.stroke();
+            mCtx.shadowBlur = 0;
+
+            // Panel wajah (inset)
+            const faceW = headW * 0.82, faceH = headH * 0.6, faceY = headTop + headH * 0.14;
+            roundRectPath(mCtx, -faceW / 2, faceY, faceW, faceH, size * 0.14);
+            mCtx.fillStyle = plateColor; mCtx.fill();
+
+            // Visor mata: pita lebar melengkung dengan glow (kesan ramah, bukan mata bulat galak)
+            const eyeY = faceY + faceH * 0.42;
+            mCtx.save(); mCtx.globalAlpha = 0.45; mCtx.fillStyle = visorColor;
+            roundRectPath(mCtx, -faceW * 0.34, eyeY - size * 0.24, faceW * 0.68, size * 0.36, size * 0.18); mCtx.fill();
+            mCtx.restore();
+            mCtx.fillStyle = visorColor;
+            roundRectPath(mCtx, -faceW * 0.3, eyeY - size * 0.15, faceW * 0.6, size * 0.2, size * 0.1); mCtx.fill();
+            mCtx.fillStyle = '#ffffff';
+            [-1, 1].forEach(dir => { mCtx.beginPath(); mCtx.arc(dir * faceW * 0.18, eyeY - size * 0.04, size * 0.05, 0, Math.PI * 2); mCtx.fill(); });
+
+            // Mulut senyum kecil
+            const mouthY = faceY + faceH * 0.8;
+            mCtx.beginPath(); mCtx.strokeStyle = trimColor; mCtx.lineWidth = 1.2;
+            mCtx.arc(0, mouthY - size * 0.16, size * 0.22, 0.15 * Math.PI, 0.85 * Math.PI); mCtx.stroke();
+
+            // Baut sudut kepala
+            mCtx.fillStyle = trimColor;
+            [[-headW / 2 + 2.2, headTop + 3], [headW / 2 - 2.2, headTop + 3], [-headW / 2 + 2.2, headTop + headH - 3], [headW / 2 - 2.2, headTop + headH - 3]].forEach(([bx, by]) => {
+                mCtx.beginPath(); mCtx.arc(bx, by, size * 0.07, 0, Math.PI * 2); mCtx.fill();
+            });
+            mCtx.restore();
+        }
+
+        // Ikon musuh berupa ROBOT JAHAT, digambar sebagai vektor (bukan emoji) langsung di canvas.
+        function drawMonsterIcon(renderX, renderY, type, facing) {
+            let time = Date.now() / 200; let bounce = Math.sin(time + renderX) * 3;
+            let blink = Math.sin(time * 1.7 + renderX) > 0.85; // antena berkedip
+            const isBoss = type === 'boss';
+            const size = isBoss ? 12 : 9.5;
+            mCtx.save();
+            mCtx.translate(renderX + TILE/2, renderY + TILE/2 + bounce); mCtx.scale(facing, 1);
+
+            const bodyColor = isBoss ? '#450a0a' : '#334155';   // rangka: merah gelap (boss) / abu metalik (grunt)
+            const plateColor = isBoss ? '#7f1d1d' : '#1e293b';  // panel wajah lebih gelap
+            const trimColor = isBoss ? '#facc15' : '#94a3b8';   // aksen/baut: emas (boss) / perak (grunt)
+            const eyeColor = '#ef4444';                          // mata menyala merah untuk keduanya
+            const headW = size * 1.7, headH = size * 1.5, headR = size * 0.32;
+            const headTop = -headH * 0.75;
+
+            // Antena
+            mCtx.strokeStyle = trimColor; mCtx.lineWidth = 1.4;
+            mCtx.beginPath(); mCtx.moveTo(0, headTop); mCtx.lineTo(0, headTop - size * 0.5); mCtx.stroke();
+            mCtx.beginPath(); mCtx.arc(0, headTop - size * 0.55, size * 0.14, 0, Math.PI * 2);
+            mCtx.fillStyle = blink ? '#fef08a' : eyeColor; mCtx.fill();
+
+            // Tanduk-antena samping untuk boss
+            if (isBoss) {
+                mCtx.beginPath();
+                mCtx.moveTo(-headW * 0.32, headTop + size * 0.1); mCtx.lineTo(-headW * 0.55, headTop - size * 0.35);
+                mCtx.moveTo(headW * 0.32, headTop + size * 0.1); mCtx.lineTo(headW * 0.55, headTop - size * 0.35);
+                mCtx.stroke();
+            }
+
+            // Kepala robot (kotak membulat) + glow
+            mCtx.shadowColor = isBoss ? 'rgba(220,38,38,0.9)' : 'rgba(0,0,0,0.5)'; mCtx.shadowBlur = isBoss ? 10 : 4;
+            roundRectPath(mCtx, -headW / 2, headTop, headW, headH, headR);
+            mCtx.fillStyle = bodyColor; mCtx.fill();
+            mCtx.lineWidth = 1.3; mCtx.strokeStyle = trimColor; mCtx.stroke();
+            mCtx.shadowBlur = 0;
+
+            // Panel wajah (inset)
+            const faceW = headW * 0.82, faceH = headH * 0.6, faceY = headTop + headH * 0.14;
+            roundRectPath(mCtx, -faceW / 2, faceY, faceW, faceH, size * 0.14);
+            mCtx.fillStyle = plateColor; mCtx.fill();
+
+            // Mata menyala (visor) + halo glow
+            const eyeY = faceY + faceH * 0.38;
+            mCtx.save(); mCtx.globalAlpha = 0.45; mCtx.fillStyle = eyeColor;
+            [-1, 1].forEach(dir => { mCtx.beginPath(); mCtx.arc(dir * size * 0.42, eyeY, size * 0.34, 0, Math.PI * 2); mCtx.fill(); });
+            mCtx.restore();
+            mCtx.fillStyle = eyeColor;
+            [-1, 1].forEach(dir => { mCtx.beginPath(); mCtx.ellipse(dir * size * 0.42, eyeY, size * 0.22, size * 0.15, isBoss ? -0.25 * dir : 0, 0, Math.PI * 2); mCtx.fill(); });
+
+            // Mulut: grill logam
+            const mouthY = faceY + faceH * 0.72;
+            mCtx.strokeStyle = trimColor; mCtx.lineWidth = 1;
+            for (let i = -1; i <= 1; i++) { mCtx.beginPath(); mCtx.moveTo(-faceW * 0.3, mouthY + i * size * 0.11); mCtx.lineTo(faceW * 0.3, mouthY + i * size * 0.11); mCtx.stroke(); }
+
+            // Baut di sudut kepala
+            mCtx.fillStyle = trimColor;
+            [[-headW / 2 + 2.5, headTop + 3], [headW / 2 - 2.5, headTop + 3], [-headW / 2 + 2.5, headTop + headH - 3], [headW / 2 - 2.5, headTop + headH - 3]].forEach(([bx, by]) => {
+                mCtx.beginPath(); mCtx.arc(bx, by, size * 0.08, 0, Math.PI * 2); mCtx.fill();
+            });
+
+            // Duri bahu untuk boss
+            if (isBoss) {
+                mCtx.beginPath();
+                mCtx.moveTo(-headW / 2, headTop + headH * 0.15); mCtx.lineTo(-headW / 2 - size * 0.5, headTop + headH * 0.4); mCtx.lineTo(-headW / 2, headTop + headH * 0.55); mCtx.closePath();
+                mCtx.moveTo(headW / 2, headTop + headH * 0.15); mCtx.lineTo(headW / 2 + size * 0.5, headTop + headH * 0.4); mCtx.lineTo(headW / 2, headTop + headH * 0.55); mCtx.closePath();
+                mCtx.fillStyle = plateColor; mCtx.fill(); mCtx.strokeStyle = trimColor; mCtx.lineWidth = 1; mCtx.stroke();
+            }
+            mCtx.restore();
+        }
+
         function drawTile(c, r, colorMode, text='', isDoor=false, isCompleted=false) {
             let x = c * TILE, y = r * TILE; let wTheme = worldMaps[state.currentWorld - 1];
             if (colorMode === 'WALL') { mCtx.fillStyle = wTheme.wall; mCtx.fillRect(x, y, TILE, TILE); mCtx.strokeStyle = 'rgba(0,0,0,0.3)'; mCtx.lineWidth = 2; mCtx.strokeRect(x+1, y+1, TILE-2, TILE-2); }
@@ -486,13 +674,13 @@
             if (Math.abs(p.x * TILE - p.renderX) > TILE * 1.5) p.renderX = p.x * TILE;
             if (Math.abs(p.y * TILE - p.renderY) > TILE * 1.5) p.renderY = p.y * TILE;
             p.renderX += (p.x * TILE - p.renderX) * lerpFactor; p.renderY += (p.y * TILE - p.renderY) * lerpFactor;
-            drawEntity(p.renderX, p.renderY, '🤖', p.facing, Date.now() < mazeState.powerUpSystem.effects.invincibleUntil ? 'invincible' : null);
+            drawHeroIcon(p.renderX, p.renderY, p.facing, Date.now() < mazeState.powerUpSystem.effects.invincibleUntil);
 
             mazeState.monsters.forEach(m => {
                 if (Math.abs(m.x * TILE - m.renderX) > TILE * 1.5) m.renderX = m.x * TILE;
                 if (Math.abs(m.y * TILE - m.renderY) > TILE * 1.5) m.renderY = m.y * TILE;
                 m.renderX += (m.x * TILE - m.renderX) * lerpFactor; m.renderY += (m.y * TILE - m.renderY) * lerpFactor;
-                drawEntity(m.renderX, m.renderY, m.type === 'boss' ? '👹' : '👾', m.facing, m.type === 'boss' ? 'boss' : null);
+                drawMonsterIcon(m.renderX, m.renderY, m.type, m.facing);
             });
 
             if (mazeState.powerUpSystem.item) {
@@ -779,10 +967,10 @@
             }
             container.innerHTML = html;
         }
-        function s_checkVar(ans) { if(ans === subQuestions[state.qIndex].subType) { playSound('success'); state.labStep++; runSubStep(); } else { playSound('error'); showBotMessage("Salah variabel."); } }
-        function s_checkExpr(correct) { if(document.getElementById('s-expr').value.replace(/\s/g, '') === correct.replace(/\s/g, '')) { playSound('success'); state.labStep++; runSubStep(); } else playSound('error'); }
-        function s_checkVal1(correct) { if(document.getElementById('s-val1').value == correct) { playSound('success'); state.labStep++; runSubStep(); } else playSound('error'); }
-        function s_checkFinal(cx, cy) { if(document.getElementById('s-fin-x').value == cx && document.getElementById('s-fin-y').value == cy) { playSound('success'); state.labStep++; runSubStep(); } else playSound('error'); }
+        function s_checkVar(ans) { if(ans === subQuestions[state.qIndex].subType) { playSound('success'); state.labStep++; runSubStep(); } else showWrongFeedback("❌ Salah variabel, coba perhatikan lagi persamaannya.", 's-step-container'); }
+        function s_checkExpr(correct) { if(document.getElementById('s-expr').value.replace(/\s/g, '') === correct.replace(/\s/g, '')) { playSound('success'); state.labStep++; runSubStep(); } else showWrongFeedback("❌ Substitusi belum tepat, cek lagi ekspresinya.", 's-step-container'); }
+        function s_checkVal1(correct) { if(document.getElementById('s-val1').value == correct) { playSound('success'); state.labStep++; runSubStep(); } else showWrongFeedback("❌ Hasil hitungan belum tepat.", 's-step-container'); }
+        function s_checkFinal(cx, cy) { const xEl = document.getElementById('s-fin-x'), yEl = document.getElementById('s-fin-y'); if(xEl.value !== '' && yEl.value !== '' && xEl.value == cx && yEl.value == cy) { playSound('success'); state.labStep++; runSubStep(); } else showWrongFeedback("❌ Nilai x atau y belum tepat, cek kembali substitusinya.", 's-step-container'); }
 
         function initElimLab() { state.labStep = 0; document.getElementById('e-eq1-text').innerText = '...'; document.getElementById('e-eq2-text').innerText = '...'; runElimStep(); }
         function runElimStep() {
@@ -792,16 +980,19 @@
                 case 1: html = `<h4 class="text-orange-400 font-bold mb-4">Langkah 1: Target</h4><p class="mb-4">Pilih variabel dengan koefisien sama atau berlawanan.</p><div class="flex gap-4 justify-center"><button class="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-mono font-bold text-xl" onclick="e_checkVar('x')">x</button><button class="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded font-mono font-bold text-xl" onclick="e_checkVar('y')">y</button></div>`; break;
                 case 2: html = `<h4 class="text-orange-400 font-bold mb-4">Langkah 2: Operasi</h4><p class="mb-4">Agar <strong>${q.elimVar}</strong> hilang, pilih operasi:</p><div class="flex gap-4 justify-center"><button class="bg-slate-700 hover:bg-orange-600 px-8 py-3 rounded font-bold text-xl" onclick="e_checkOp('+')">TAMBAH (+)</button><button class="bg-slate-700 hover:bg-orange-600 px-8 py-3 rounded font-bold text-xl" onclick="e_checkOp('-')">KURANG (-)</button></div>`; break;
                 case 3: html = `<h4 class="text-orange-400 font-bold mb-4">Langkah 3: Hitung</h4><p class="mb-4">Gunakan operasi <strong>${q.op}</strong>. Ketik hasilnya (misal: 3x = 12):</p><div class="text-center"><input type="text" id="e-res" class="w-48 bg-slate-900 border border-orange-500 rounded p-2 text-center font-mono text-xl text-white mb-4"><br><button class="bg-orange-600 px-6 py-2 rounded font-bold" onclick="e_checkRes('${q.resEq}')">CEK HASIL</button></div>`; break;
-                case 4: let foundVar = q.elimVar === 'y' ? 'x' : 'y'; let foundVal = foundVar === 'x' ? q.xVal : q.yVal; let missingVar = foundVar === 'x' ? 'y' : 'x';
-                    html = `<h4 class="text-yellow-400 font-bold mb-4">Langkah 4: Cari Variabel Kedua</h4><div class="bg-slate-700/50 p-4 rounded-lg border border-slate-600 mb-6"><p class="text-sm text-slate-300 mb-2">Dari perhitungan sebelumnya, kita peroleh:</p><p class="font-mono text-xl text-center text-white bg-slate-800 p-2 rounded mb-2 border border-slate-700">${q.resEq} &nbsp; &rarr; &nbsp; <span class="text-yellow-400">${foundVar} = ${foundVal}</span></p><p class="text-sm text-slate-300">Sekarang substitusikan ke persamaan awal (misal: <span class="text-blue-300 font-mono">${q.eq1.text}</span>) untuk mencari <strong>${missingVar}</strong>.</p></div><div class="flex justify-center gap-6 text-2xl font-mono mb-6"><div class="flex items-center gap-2"><span>x = </span> <input type="number" id="e-fin-x" class="w-16 bg-slate-900 border border-slate-500 rounded p-2 text-center text-white focus:border-yellow-400 outline-none" ${foundVar === 'x' ? `value="${foundVal}" readonly class="bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed"` : ''}></div><div class="flex items-center gap-2"><span>y = </span> <input type="number" id="e-fin-y" class="w-16 bg-slate-900 border border-slate-500 rounded p-2 text-center text-white focus:border-yellow-400 outline-none" ${foundVar === 'y' ? `value="${foundVal}" readonly class="bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed"` : ''}></div></div><div class="text-center"><button class="bg-yellow-600 hover:bg-yellow-500 px-8 py-3 rounded-lg font-bold" onclick="e_checkFinal(${q.xVal}, ${q.yVal})">SELESAIKAN</button></div>`; break;
-                case 5: html = `<div class="text-center py-8"><div class="text-5xl mb-4">🚀</div><h2 class="text-2xl font-bold mb-2">Eliminasi Berhasil!</h2><button class="bg-lab-warning hover:bg-orange-500 px-8 py-3 rounded-lg font-bold" onclick="finishLab('elim')">KEMBALI KE LABIRIN</button></div>`; addScore(); break;
+                case 4: { let foundVar4 = q.elimVar === 'y' ? 'x' : 'y'; let foundVal4 = foundVar4 === 'x' ? q.xVal : q.yVal;
+                    html = `<h4 class="text-orange-400 font-bold mb-4">Langkah 4: Hitung Nilai ${foundVar4.toUpperCase()}</h4><p class="text-sm text-slate-300 mb-4">Dari hasil eliminasi, kamu peroleh persamaan:</p><div class="math-text text-xl bg-slate-900 p-4 rounded text-center mb-6 border border-orange-500/50">${q.resEq}</div><p class="text-sm text-slate-300 mb-4">Selesaikan persamaan tersebut untuk mencari nilai <strong>${foundVar4}</strong>.</p><div class="flex items-center justify-center gap-4 text-2xl font-mono mb-6"><span>${foundVar4} = </span><input type="number" id="e-val1" class="w-20 bg-slate-900 border border-slate-500 rounded p-2 text-center text-white"></div><div class="text-center"><button class="bg-orange-600 px-6 py-2 rounded font-bold" onclick="e_checkVal1(${foundVal4})">CEK</button></div>`; break; }
+                case 5: { let foundVar = q.elimVar === 'y' ? 'x' : 'y'; let foundVal = foundVar === 'x' ? q.xVal : q.yVal; let missingVar = foundVar === 'x' ? 'y' : 'x';
+                    html = `<h4 class="text-yellow-400 font-bold mb-4">Langkah 5: Cari Variabel Kedua</h4><div class="bg-slate-700/50 p-4 rounded-lg border border-slate-600 mb-6"><p class="text-sm text-slate-300 mb-2">Dari perhitungan sebelumnya, kita peroleh:</p><p class="font-mono text-xl text-center text-white bg-slate-800 p-2 rounded mb-2 border border-slate-700">${q.resEq} &nbsp; &rarr; &nbsp; <span class="text-yellow-400">${foundVar} = ${foundVal}</span></p><p class="text-sm text-slate-300">Sekarang substitusikan ke persamaan awal (misal: <span class="text-blue-300 font-mono">${q.eq1.text}</span>) untuk mencari <strong>${missingVar}</strong>.</p></div><div class="flex justify-center gap-6 text-2xl font-mono mb-6"><div class="flex items-center gap-2"><span>x = </span> <input type="number" id="e-fin-x" class="w-16 bg-slate-900 border border-slate-500 rounded p-2 text-center text-white focus:border-yellow-400 outline-none" ${foundVar === 'x' ? `value="${foundVal}" readonly class="bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed"` : ''}></div><div class="flex items-center gap-2"><span>y = </span> <input type="number" id="e-fin-y" class="w-16 bg-slate-900 border border-slate-500 rounded p-2 text-center text-white focus:border-yellow-400 outline-none" ${foundVar === 'y' ? `value="${foundVal}" readonly class="bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed"` : ''}></div></div><div class="text-center"><button class="bg-yellow-600 hover:bg-yellow-500 px-8 py-3 rounded-lg font-bold" onclick="e_checkFinal(${q.xVal}, ${q.yVal})">SELESAIKAN</button></div>`; break; }
+                case 6: html = `<div class="text-center py-8"><div class="text-5xl mb-4">🚀</div><h2 class="text-2xl font-bold mb-2">Eliminasi Berhasil!</h2><button class="bg-lab-warning hover:bg-orange-500 px-8 py-3 rounded-lg font-bold" onclick="finishLab('elim')">KEMBALI KE LABIRIN</button></div>`; addScore(); break;
             }
             container.innerHTML = html;
         }
-        function e_checkVar(ans) { const q = elimQuestions[state.qIndex]; if((ans === 'x' && q.elimVar.includes('x')) || (ans === 'y' && q.elimVar.includes('y'))) { playSound('success'); state.labStep++; runElimStep(); } else playSound('error'); }
-        function e_checkOp(ans) { if(ans === elimQuestions[state.qIndex].op) { playSound('success'); state.labStep++; runElimStep(); } else playSound('error'); }
-        function e_checkRes(correct) { if(document.getElementById('e-res').value.replace(/\s/g, '') === correct.replace(/\s/g, '')) { playSound('success'); state.labStep++; runElimStep(); } else playSound('error'); }
-        function e_checkFinal(cx, cy) { if(document.getElementById('e-fin-x').value == cx && document.getElementById('e-fin-y').value == cy) { playSound('success'); state.labStep++; runElimStep(); } else playSound('error'); }
+        function e_checkVar(ans) { const q = elimQuestions[state.qIndex]; if((ans === 'x' && q.elimVar.includes('x')) || (ans === 'y' && q.elimVar.includes('y'))) { playSound('success'); state.labStep++; runElimStep(); } else showWrongFeedback("❌ Variabel itu belum bisa dieliminasi, coba lagi.", 'e-step-container'); }
+        function e_checkOp(ans) { if(ans === elimQuestions[state.qIndex].op) { playSound('success'); state.labStep++; runElimStep(); } else showWrongFeedback("❌ Operasi belum tepat untuk menghilangkan variabel ini.", 'e-step-container'); }
+        function e_checkRes(correct) { if(document.getElementById('e-res').value.replace(/\s/g, '') === correct.replace(/\s/g, '')) { playSound('success'); state.labStep++; runElimStep(); } else showWrongFeedback("❌ Hasil eliminasi belum tepat, cek lagi hitunganmu.", 'e-step-container'); }
+        function e_checkVal1(correct) { const el = document.getElementById('e-val1'); if(el.value !== '' && el.value == correct) { playSound('success'); state.labStep++; runElimStep(); } else showWrongFeedback("❌ Nilai belum tepat, coba hitung lagi.", 'e-step-container'); }
+        function e_checkFinal(cx, cy) { const xEl = document.getElementById('e-fin-x'), yEl = document.getElementById('e-fin-y'); if(xEl.value !== '' && yEl.value !== '' && xEl.value == cx && yEl.value == cy) { playSound('success'); state.labStep++; runElimStep(); } else showWrongFeedback("❌ Nilai x atau y belum tepat, cek kembali substitusinya.", 'e-step-container'); }
 
         function initMasterLab() {
             state.qIndex = Math.floor(Math.random() * graphQuestions.length); const q = graphQuestions[state.qIndex];
@@ -811,7 +1002,8 @@
 
         function verifyMaster() {
             const q = graphQuestions[state.qIndex];
-            if (document.getElementById('m-ans-x').value == q.sol.x && document.getElementById('m-ans-y').value == q.sol.y) {
+            const xEl = document.getElementById('m-ans-x'), yEl = document.getElementById('m-ans-y');
+            if (xEl.value !== '' && yEl.value !== '' && xEl.value == q.sol.x && yEl.value == q.sol.y) {
                 playSound('unlock'); addScore(); addScore(); state.labsCompleted.master = true;
                 if (state.currentWorld < 10) {
                     navTo('maze');
@@ -826,7 +1018,7 @@
                         setTimeout(() => { overlay.classList.add('hidden'); overlay.classList.remove('flex'); showBotMessage(`Selamat datang di World ${state.currentWorld}!`, "Tantangan baru menantimu."); }, 1000);
                     }, 2500);
                 } else { navTo('reward'); } // 10 World Tamat!
-            } else { playSound('error'); showBotMessage("❌ Solusi belum tepat."); }
+            } else { showWrongFeedback("❌ Solusi belum tepat, cek kembali perhitunganmu.", 'master-step-container'); }
         }
 
         function finishLab(labName) {
